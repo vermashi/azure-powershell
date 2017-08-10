@@ -7,12 +7,10 @@ function Check-StrongName {
         Write-Output "$path has an invalid string name."
     }
 }
+ 
+$invalidList = Get-ChildItem -Recurse -Filter *.dll | %{Check-StrongName -path $_.FullName}
 
-function Check-All {    
-    $invalidList = Get-ChildItem -Recurse -Filter *.dll | %{Check-StrongName -path $_.FullName}
-
-    if ($invalidList.Length -gt 0) {
-        Write-Output($invalidList)
-        throw "Strong name signature checked failed. One (or more) of the dlls has an invalid string name."
-    }
+if ($invalidList.Length -gt 0) {
+    Write-Output($invalidList)
+    throw "Strong name signature checked failed. One (or more) of the dlls has an invalid string name."
 }
