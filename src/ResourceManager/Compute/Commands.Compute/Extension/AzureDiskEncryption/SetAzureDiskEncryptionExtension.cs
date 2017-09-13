@@ -13,16 +13,21 @@
 // ----------------------------------------------------------------------------------
 
 using AutoMapper;
+using Microsoft.Azure.Commands.Common.Authentication;
+using Microsoft.Azure.Commands.Common.Authentication.Abstractions;
 using Microsoft.Azure.Commands.Compute.Common;
 using Microsoft.Azure.Commands.Compute.Extension.AzureVMBackup;
 using Microsoft.Azure.Commands.Compute.Models;
 using Microsoft.Azure.Management.Compute;
 using Microsoft.Azure.Management.Compute.Models;
+using Microsoft.Azure.Management.Internal.Resources;
+using Microsoft.Azure.Management.KeyVault;
 using Microsoft.Rest.Azure;
 using System;
 using System.Collections;
 using System.Globalization;
 using System.Management.Automation;
+using System.Text.RegularExpressions;
 
 namespace Microsoft.Azure.Commands.Compute.Extension.AzureDiskEncryption
 {
@@ -476,6 +481,8 @@ namespace Microsoft.Azure.Commands.Compute.Extension.AzureDiskEncryption
                 && (this.Force.IsPresent ||
                 this.ShouldContinue(Properties.Resources.EnableAzureDiskEncryptionConfirmation, Properties.Resources.EnableAzureDiskEncryptionCaption)))
                 {
+                    VerifyParameters();
+
                     VirtualMachine virtualMachineResponse = this.ComputeClient.ComputeManagementClient.VirtualMachines.GetWithInstanceView(
                         this.ResourceGroupName, VMName).Body;
 
@@ -515,6 +522,86 @@ namespace Microsoft.Azure.Commands.Compute.Extension.AzureDiskEncryption
                     WriteObject(result);
                 }
             });
+        }
+
+        private void VerifyParameters()
+        {
+            if (this.DiskEncryptionKeyVaultId != null)
+            {
+                VerifyKeyVault(this.DiskEncryptionKeyVaultId);
+            }
+
+            if (this.KeyEncryptionKeyVaultId != null)
+            {
+                VerifyKeyVault(this.KeyEncryptionKeyVaultId);
+            }
+        }
+
+        private void VerifyKeyVault(string keyVaultId)
+        {
+            string regexString = @"/subscriptions/(?<subId>\S+)/resourceGroups/(?<rgName>\S+)/providers/Microsoft.KeyVault/vaults/(?<vaultName>\S+)(.*?)";
+            Regex r = new Regex(regexString, RegexOptions.IgnoreCase);
+            Match m = r.Match(keyVaultId);
+            if (m.Success)
+            {
+                string sub = m.Groups["subId"].Value;
+                string rg = m.Groups["rgName"].Value;
+                string kv = m.Groups["vaultName"].Value;
+                if (!string.IsNullOrWhiteSpace(sub) && sub.Equals(this.DefaultContext.Subscription.Id))
+                {
+                    IKeyVaultManagementClient keyVaultManagementFactory =
+                        AzureSession.Instance.ClientFactory.CreateArmClient<KeyVaultManagementClient>(
+                            this.DefaultContext, AzureEnvironment.Endpoint.ResourceManager);
+
+                    //var thisVmss = this.VirtualMachineScaleSetClient.Get(this.ResourceGroupName, this.VMScaleSetName);
+                    var thisVM = this.ComputeClient.ComputeManagementClient.VirtualMachines.GetWithInstanceView(
+                        this.ResourceGroupName, VMName).Body;
+
+                    try
+                    {
+                        var returnedKeyVault = keyVaultManagementFactory.Vaults.Get(rg, kv);
+
+                        if (!returnedKeyVault.Location.Equals(thisVM.Location))
+                        {
+                            ThrowInvalidArgumentError("The location of key vault ID, {0}, does not match with the VM scale set.", keyVaultId);
+
+                        }
+                        else if (returnedKeyVault.Properties == null
+                            || returnedKeyVault.Properties.EnabledForDiskEncryption == null
+                            || returnedKeyVault.Properties.EnabledForDiskEncryption.Value == false)
+                        {
+                            ThrowInvalidArgumentError("The EnabledForDiskEncryption flag of the key vault ID, {0}, is not set.", keyVaultId);
+                        }
+                        else
+                        {
+                            return;
+                        }
+                    }
+                    catch
+                    {
+                        WriteWarning("Cannot access the given key vault.  Please check if 'enabledForDiskEncryption' of the key vault is set.");
+                    }
+                }
+                else
+                {
+                    ThrowInvalidArgumentError("The subscription ID of key vault ID, {0}, is incorrect.", keyVaultId);
+                }
+            }
+            else
+            {
+                ThrowInvalidArgumentError("The format of key vault ID, {0}, is incorrect.", keyVaultId);
+            }
+        }
+
+        protected void ThrowInvalidArgumentError(string errorMessage, string arg)
+        {
+            ThrowTerminatingError
+                (new ErrorRecord(
+                    new ArgumentException(string.Format(CultureInfo.InvariantCulture,
+                        errorMessage, arg)),
+                    "InvalidArgument",
+                    ErrorCategory.InvalidArgument,
+                    null));
         }
     }
 }
