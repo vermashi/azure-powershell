@@ -320,18 +320,6 @@ namespace Microsoft.Azure.Commands.Compute.Extension.AzureDiskEncryption
                 encryptionSettings.KeyEncryptionKey.KeyUrl = this.KeyEncryptionKeyUrl;
             }
             vmParameters.StorageProfile.OsDisk.EncryptionSettings = encryptionSettings;
-            var parameters = new VirtualMachine
-            {
-                DiagnosticsProfile = vmParameters.DiagnosticsProfile,
-                HardwareProfile = vmParameters.HardwareProfile,
-                StorageProfile = vmParameters.StorageProfile,
-                NetworkProfile = vmParameters.NetworkProfile,
-                OsProfile = vmParameters.OsProfile,
-                Plan = vmParameters.Plan,
-                AvailabilitySet = vmParameters.AvailabilitySet,
-                Location = vmParameters.Location,
-                Tags = vmParameters.Tags
-            };
 
             AzureOperationResponse<VirtualMachine> updateResult = null;
 
@@ -341,7 +329,7 @@ namespace Microsoft.Azure.Commands.Compute.Extension.AzureDiskEncryption
                 updateResult = this.ComputeClient.ComputeManagementClient.VirtualMachines.CreateOrUpdateWithHttpMessagesAsync(
                     this.ResourceGroupName,
                     vmParameters.Name,
-                    parameters).GetAwaiter().GetResult();
+                    vmParameters).GetAwaiter().GetResult();
             }
             else
             {
@@ -356,23 +344,11 @@ namespace Microsoft.Azure.Commands.Compute.Extension.AzureDiskEncryption
                 vmParameters = (this.ComputeClient.ComputeManagementClient.VirtualMachines.Get(
                 this.ResourceGroupName, this.VMName));
                 vmParameters.StorageProfile.OsDisk.EncryptionSettings = encryptionSettings;
-                parameters = new VirtualMachine
-                {
-                    DiagnosticsProfile = vmParameters.DiagnosticsProfile,
-                    HardwareProfile = vmParameters.HardwareProfile,
-                    StorageProfile = vmParameters.StorageProfile,
-                    NetworkProfile = vmParameters.NetworkProfile,
-                    OsProfile = vmParameters.OsProfile,
-                    Plan = vmParameters.Plan,
-                    AvailabilitySet = vmParameters.AvailabilitySet,
-                    Location = vmParameters.Location,
-                    Tags = vmParameters.Tags
-                };
 
                 updateResult = this.ComputeClient.ComputeManagementClient.VirtualMachines.CreateOrUpdateWithHttpMessagesAsync(
                     this.ResourceGroupName,
                     vmParameters.Name,
-                    parameters).GetAwaiter().GetResult();
+                    vmParameters).GetAwaiter().GetResult();
 
                 // start vm
                 this.ComputeClient.ComputeManagementClient.VirtualMachines
